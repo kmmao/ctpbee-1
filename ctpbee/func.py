@@ -4,7 +4,9 @@
 
 """
 import logging
-from datetime import time, datetime
+import os
+import platform
+from datetime import time, datetime, timedelta
 from inspect import isfunction
 from multiprocessing import Process
 from time import sleep
@@ -32,7 +34,7 @@ def send_order(order_req: OrderRequest, app_name: str = "current_app"):
     return app.trader.send_order(order_req)
 
 
-def cancel_order(cancle_req: CancelRequest, app_name: str = "current_app"):
+def cancel_order(cancel_req: CancelRequest, app_name: str = "current_app"):
     """ 撤单 """
     if app_name == "current_app":
         app = current_app
@@ -40,8 +42,8 @@ def cancel_order(cancle_req: CancelRequest, app_name: str = "current_app"):
         app = get_app(app_name)
     if not app.config.get("TD_FUNC"):
         raise TraderError(message="交易功能未开启", args=("交易功能未开启",))
-    cancel_monitor.send(cancle_req)
-    app.trader.cancel_order(cancle_req)
+    cancel_monitor.send(cancel_req)
+    app.trader.cancel_order(cancel_req)
 
 
 def subscribe(symbol: Text, app_name: str = "current_app") -> None:
@@ -175,7 +177,7 @@ def auth_time(data_time: time):
         data_time = tick.datetime.time()
     """
     if not isinstance(data_time, time):
-        raise TypeError("参数类型错误, 期望为datatime.time}")
+        raise TypeError("参数类型错误, 期望为datetime.time}")
     DAY_START = time(9, 0)  # 日盘启动和停止时间
     DAY_END = time(15, 0)
     NIGHT_START = time(21, 0)
@@ -191,27 +193,37 @@ def auth_time(data_time: time):
 
 class Hickey(object):
     """ ctpbee进程调度 """
-
+    from datetime import time
     logger = logging.getLogger("ctpbee")
+    DAY_START = time(9, 0)  # 日盘启动和停止时间
+    DAY_END = time(15, 5)
+    NIGHT_START = time(21, 0)  # 夜盘启动和停止时间
+    NIGHT_END = time(2, 35)
+
+    TIME_MAPPING = {
+        "dy_st": "DAY_START",
+        "dy_ed": "DAY_END",
+        "ng_st": "NIGHT_START",
+        "ng_ed": "NIGHT_END"
+    }
 
     def __init__(self):
         self.names = []
+        from datetime import time
+        self.open_trading = {
+            "ctp": {"DAY_START": time(9, 0), "NIGHT_START": time(21, 0)}
+        }
 
     def auth_time(self, current: datetime):
-        from datetime import time
-        DAY_START = time(8, 57)  # 日盘启动和停止时间
-        DAY_END = time(15, 5)
-        NIGHT_START = time(20, 57)  # 夜盘启动和停止时间
-        NIGHT_END = time(2, 35)
         if ((current.today().weekday() == 6) or
-                (current.today().weekday() == 5 and current.time() > NIGHT_END) or
-                (current.today().weekday() == 0 and current.time() < DAY_START)):
+                (current.today().weekday() == 5 and current.time() > self.NIGHT_END) or
+                (current.today().weekday() == 0 and current.time() < self.DAY_START)):
             return False
-        if current.time() <= DAY_END and current.time() >= DAY_START:
+        if self.DAY_END >= current.time() >= self.DAY_START:
             return True
-        if current.time() >= NIGHT_START:
+        if current.time() >= self.NIGHT_START:
             return True
-        if current.time() <= NIGHT_END:
+        if current.time() <= self.NIGHT_END:
             return True
         return False
 
@@ -234,23 +246,46 @@ class Hickey(object):
         else:
             raise ValueError("你传入的创建的func无法创建CtpBee变量, 请检查返回值")
 
-    def start_all(self, app_func):
-        """ 开始进程管理 """
+    @staticmethod
+    def add_seconds(tm, seconds, direction=False):
+        full_date = datetime(100, 1, 1, tm.hour, tm.minute, tm.second)
+        if not direction:
+            full_date = full_date - timedelta(seconds=seconds)
+        else:
+            full_date = full_date + timedelta(seconds=seconds)
+        return full_date.time()
+
+    def start_all(self, app_func, info=True, interface="ctp", in_front=300):
+        """
+        开始进程管理
+        * app_func: 创建app的函数
+        * interface: 接口名字
+        * in_front: 相较于开盘提前多少秒进行运行登陆.单位: seconds
+        """
+        print("""
+        Ctpbee 7*24 Manager started !
+        Warning: program will automatic start at trade time ....
+        Hope you will have a  good profit ^_^
+        """)
         if not isfunction(app_func):
             raise TypeError(f"请检查你传入的app_func是否是创建app的函数,  而不是{type(app_func)}")
+        for i, v in self.open_trading[interface].items():
+            setattr(self, i, self.add_seconds(getattr(self, i), in_front))
         p = None
         while True:
-            """ """
             current = datetime.now()
+
             status = self.auth_time(current)
-            if p is None and status == True:
+
+            if info:
+                print("ctpbee manager running ---> ^_^ ")
+
+            if p is None and status:
                 p = Process(target=self.run_all_app, args=(app_func,))
                 p.start()
-                self.logger.info("启动程序")
+                print("program start successful")
             if not status and p is not None:
-                self.logger.info("查杀子进程")
-                import os
-                import platform
+                print("invalid time, 查杀子进程")
                 if platform.uname().system == "Windows":
                     os.popen('taskkill /F /pid ' + str(p.pid))
                 else:
@@ -260,18 +295,55 @@ class Hickey(object):
                 p = None
             sleep(30)
 
+    def update_time(self, timed: time, flag: str):
+        """
+        此函数被用来修改更新启动时间或者关闭时间
+
+        :param timed:
+        :param flag:需要修改的字段 仅仅
+                  "dy_st": "白天开始",
+                 "dy_ed": "白天结束",
+                "ng_st": "晚上开始",
+               "ng_ed": "晚上结束"
+    }
+        :return: None
+        """
+        if flag not in self.TIME_MAPPING.keys():
+            raise ValueError(f"注意你的flag是不被接受的，我们仅仅支持\n "
+                             f"{str(list(self.TIME_MAPPING.keys()))}四种")
+        if not isinstance(timed, time):
+            raise ValueError(f"timed错误的数据类型，期望 time, 当前{str(type(timed))}")
+
+        setattr(self, self.TIME_MAPPING[flag], timed)
+
     def __repr__(self):
-        return "ctpbee 7*24 manager "
+        return "ctpbee 7*24 manager ^_^"
 
 
 hickey = Hickey()
 
 
-class RLock:
-    def __init__(self, name, second=10):
-        """ 创建一个新锁 """
-        self._start = datetime.now().timestamp()
-        self._end = self._start + second
+def join_path(rootdir, *args):
+    """ 路径添加器 """
+    for i in args:
+        rootdir = os.path.join(rootdir, i)
+    return rootdir
 
-    def release(self):
-        pass
+
+def get_ctpbee_path():
+    """
+    获取ctpbee的路径默认路径
+    """
+    system_ = platform.system()
+    if system_ == 'Linux':
+        home_path = os.environ['HOME']
+    elif system_ == 'Windows':
+        home_path = os.environ['HOMEDRIVE'] + os.environ['HOMEPATH']
+    elif system_ == "Darwin":
+        home_path = os.environ['HOME']
+    else:
+        raise Exception("bee does not know the system!")
+    ctpbee_path = os.path.join(home_path, ".ctpbee")
+    if not os.path.exists(ctpbee_path):
+        os.mkdir(ctpbee_path)
+    return ctpbee_path

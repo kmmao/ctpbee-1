@@ -18,21 +18,21 @@ Notice : 神兽保佑 ，测试一次通过
 //          ┃ ┫ ┫   ┃ ┫ ┫
 //          ┗━┻━┛   ┗━┻━┛
 //
-"""
+"""                      
 from collections import defaultdict
 
 from ctpbee.constant import *
-from ctpbee.event_engine import Event
 from ctpbee.interface.ctp.lib import *
+from ctpbee.signals import common_signals
 
 
 class BeeTdApi(TdApi):
     """"""
 
-    def __init__(self, event_engine):
+    def __init__(self, app_signal):
         """Constructor"""
         super(BeeTdApi, self).__init__()
-        self.event_engine = event_engine
+        self.app_signal = app_signal
         self.gateway_name = "ctp"
 
         self.reqid = 0
@@ -69,7 +69,8 @@ class BeeTdApi(TdApi):
 
     def on_event(self, type, data):
         event = Event(type=type, data=data)
-        self.event_engine.put(event)
+        signal = getattr(self.app_signal, f"{type}_signal")
+        signal.send(event)
 
     def onFrontConnected(self):
         """"""
@@ -595,7 +596,6 @@ class BeeTdApi(TdApi):
         if self.connect_status:
             print("我在释放交易接口")
             p = self.exit()
-
 
 
 class BeeTdApiApp(TdApiApp):

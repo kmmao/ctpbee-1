@@ -12,204 +12,57 @@
 #            'white':  白色           'white':  白色                                     #
 #########################################################################################
 """
+
+from colour_printing.config import CPConfig, Term
+
 from datetime import datetime
+
 from colour_printing import Mode, Fore, Back
 
-get_time = lambda: datetime.strftime(datetime.now(), '%Y-%m-%d %H:%M:%S,%f')[:-3]
+get_time = lambda: datetime.strftime(datetime.now(), '%Y-%m-%d %H:%M:%S.%f')[:-3]
 
 TEMPLATE = "{created} {name}     {levelname}  {owner}   {message}"
+CP = CPConfig(TEMPLATE)  # 导出CP
 
-created_default = get_time
 
-name_default = ""
+class Paper(object):
 
-levelname_default = ""
+    @CP.wrap
+    def info(self):
+        self.created = Term(Fore.RED, default=get_time)
+        self.name = Term()
+        self.levelname = Term(Fore.PURPLE, default="INFO")
+        self.owner = Term(Fore.CYAN)
+        self.message = Term(Fore.GREEN)
 
-owner_default = ""
+    @CP.wrap
+    def success(self):
+        self.created = Term(Fore.CYAN, default=get_time)
+        self.name = Term(Fore.CYAN)
+        self.levelname = Term(default="SUCCESS")
+        self.owner = Term(Fore.CYAN)
+        self.message = Term(Fore.CYAN)
 
-message_default = ""
+    @CP.wrap
+    def warning(self):
+        self.created = Term(Fore.RED, default=get_time)
+        self.name = Term()
+        self.levelname = Term(Fore.PURPLE, default="WARNING")
+        self.owner = Term(Fore.CYAN)
+        self.message = Term(Fore.YELLOW)
 
-INFO = {
-    "created": {
-        "DEFAULT": created_default,  # 默认值
-        "fore": Fore.RED,  # 前景色
-        "back": Back,  # 背景色
-        "mode": Mode,  # 模式
-    },
+    @CP.wrap
+    def error(self):
+        self.created = Term(Fore.RED, default=get_time)
+        self.name = Term()
+        self.levelname = Term(Fore.PURPLE, default="ERROR")
+        self.owner = Term(Fore.CYAN)
+        self.message = Term(Fore.RED)
 
-    "name": {
-        "DEFAULT": name_default,  # 默认值
-        "fore": Fore,  # 前景色
-        "back": Back,  # 背景色
-        "mode": Mode,  # 模式
-    },
-
-    "levelname": {
-        "DEFAULT": "INFO",  # 默认值
-        "fore": Fore.PURPLE,  # 前景色
-        "back": Back,  # 背景色
-        "mode": Mode,  # 模式
-    },
-
-    "owner": {
-        "DEFAULT": owner_default,  # 默认值
-        "fore": Fore.CYAN,  # 前景色
-        "back": Back,  # 背景色
-        "mode": Mode,  # 模式
-    },
-
-    "message": {
-        "DEFAULT": message_default,  # 默认值
-        "fore": Fore.GREEN,  # 前景色
-        "back": Back,  # 背景色
-        "mode": Mode,  # 模式
-    },
-}
-
-SUCCESS = {
-    "created": {
-        "DEFAULT": created_default,  # 默认值
-        "fore": Fore.CYAN,  # 前景色
-        "back": Back,  # 背景色
-        "mode": Mode,  # 模式
-    },
-
-    "name": {
-        "DEFAULT": name_default,  # 默认值
-        "fore": Fore.CYAN,  # 前景色
-        "back": Back,  # 背景色
-        "mode": Mode,  # 模式
-    },
-
-    "levelname": {
-        "DEFAULT": "SUCCESS",  # 默认值
-        "fore": Fore.CYAN,  # 前景色
-        "back": Back,  # 背景色
-        "mode": Mode,  # 模式
-    },
-
-    "owner": {
-        "DEFAULT": owner_default,  # 默认值
-        "fore": Fore.CYAN,  # 前景色
-        "back": Back,  # 背景色
-        "mode": Mode,  # 模式
-    },
-
-    "message": {
-        "DEFAULT": message_default,  # 默认值
-        "fore": Fore.CYAN,  # 前景色
-        "back": Back,  # 背景色
-        "mode": Mode,  # 模式
-    },
-}
-
-WARNING = {
-    "created": {
-        "DEFAULT": created_default,  # 默认值
-        "fore": Fore.RED,  # 前景色
-        "back": Back,  # 背景色
-        "mode": Mode,  # 模式
-    },
-
-    "name": {
-        "DEFAULT": name_default,  # 默认值
-        "fore": Fore,  # 前景色
-        "back": Back,  # 背景色
-        "mode": Mode,  # 模式
-    },
-
-    "levelname": {
-        "DEFAULT": "WARNING",  # 默认值
-        "fore": Fore.PURPLE,  # 前景色
-        "back": Back,  # 背景色
-        "mode": Mode,  # 模式
-    },
-
-    "owner": {
-        "DEFAULT": owner_default,  # 默认值
-        "fore": Fore.CYAN,  # 前景色
-        "back": Back,  # 背景色
-        "mode": Mode,  # 模式
-    },
-
-    "message": {
-        "DEFAULT": message_default,  # 默认值
-        "fore": Fore.YELLOW,  # 前景色
-        "back": Back,  # 背景色
-        "mode": Mode,  # 模式
-    },
-}
-
-ERROR = {
-    "created": {
-        "DEFAULT": created_default,  # 默认值
-        "fore": Fore.RED,  # 前景色
-        "back": Back,  # 背景色
-        "mode": Mode,  # 模式
-    },
-
-    "name": {
-        "DEFAULT": name_default,  # 默认值
-        "fore": Fore,  # 前景色
-        "back": Back,  # 背景色
-        "mode": Mode,  # 模式
-    },
-
-    "levelname": {
-        "DEFAULT": "ERROR",  # 默认值
-        "fore": Fore.PURPLE,  # 前景色
-        "back": Back,  # 背景色
-        "mode": Mode,  # 模式
-    },
-
-    "owner": {
-        "DEFAULT": owner_default,  # 默认值
-        "fore": Fore.CYAN,  # 前景色
-        "back": Back,  # 背景色
-        "mode": Mode,  # 模式
-    },
-
-    "message": {
-        "DEFAULT": message_default,  # 默认值
-        "fore": Fore.RED,  # 前景色
-        "back": Back,  # 背景色
-        "mode": Mode,  # 模式
-    },
-}
-
-DEBUG = {
-    "created": {
-        "DEFAULT": created_default,  # 默认值
-        "fore": Fore.RED,  # 前景色
-        "back": Back,  # 背景色
-        "mode": Mode,  # 模式
-    },
-
-    "name": {
-        "DEFAULT": name_default,  # 默认值
-        "fore": Fore,  # 前景色
-        "back": Back,  # 背景色
-        "mode": Mode,  # 模式
-    },
-
-    "levelname": {
-        "DEFAULT": "DEBUG",  # 默认值
-        "fore": Fore.PURPLE,  # 前景色
-        "back": Back,  # 背景色
-        "mode": Mode,  # 模式
-    },
-
-    "owner": {
-        "DEFAULT": owner_default,  # 默认值
-        "fore": Fore.CYAN,  # 前景色
-        "back": Back,  # 背景色
-        "mode": Mode,  # 模式
-    },
-
-    "message": {
-        "DEFAULT": message_default,  # 默认值
-        "fore": Fore.PURPLE,  # 前景色
-        "back": Back,  # 背景色
-        "mode": Mode,  # 模式
-    },
-}
+    @CP.wrap
+    def debug(self):
+        self.created = Term(Fore.RED, default=get_time)
+        self.name = Term()
+        self.levelname = Term(Fore.PURPLE, default="DEBUG")
+        self.owner = Term(Fore.CYAN)
+        self.message = Term(Fore.PURPLE)

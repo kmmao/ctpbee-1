@@ -1,8 +1,8 @@
 # encoding: UTF-8
-
+from types import MethodType
+from ctpbee.signals import common_signals
 from ctpbee.constant import BarData, TickData, SharedData, EVENT_BAR, EVENT_SHARED
-from ctpbee.event_engine import Event
-
+from ctpbee.constant import Event
 
 class DataGenerator:
     """
@@ -12,9 +12,8 @@ class DataGenerator:
     3, generate shared time data
     """
 
-    def __init__(self, et_engine, app):
+    def __init__(self, app):
         """Constructor"""
-        self.rpo = et_engine
         self.bar = None
         self.last_tick = None
         self.local_symbol = None
@@ -30,10 +29,19 @@ class DataGenerator:
         self.app = app
 
         self.XMIN = app.config.get("XMIN")
-        self._generator()
+        self._generate_instance()
         self.rd = None
 
-    def _generator(self):
+        gen_func = lambda item: setattr(self, f"get_min_{item}_bar",
+                                        property(
+                                            fget=MethodType(lambda self: getattr(self, f"min_{item}_bar"), self)).fget)
+        [gen_func(x) for x in self.XMIN]
+
+    @property
+    def get_min_1_bar(self):
+        return self.bar
+
+    def _generate_instance(self):
         for x in self.XMIN:
             setattr(self, "min_{}".format(x), x)
             setattr(self, "min_{}_bar".format(x), None)
@@ -43,17 +51,11 @@ class DataGenerator:
         Update new tick data into generator and new_shared time data.
         """
         new_minute = False
+
+        """ 更新价位 """
         self.last_price = tick.last_price
         self.open_interest = tick.open_interest
         self.volume = tick.volume
-
-        # 更新均价线
-        self.molecule = self.molecule + tick.last_price * tick.volume
-        self.denominator = self.denominator + tick.volume
-        try:
-            self.average_price = self.molecule / self.denominator
-        except ZeroDivisionError:
-            self.average_price = tick.last_price
 
         if self.last_volume is None:
             self.last_volume = tick.volume
@@ -67,19 +69,11 @@ class DataGenerator:
             )
             self.bar.interval = 1
             event = Event(type=EVENT_BAR, data=self.bar)
-            self.rpo.put(event)
-            [self.update_bar(x, getattr(self, "min_{}_bar".format(x)), self.bar) for x in self.XMIN]
+            common_signals.bar_signal.send(event)
+            [self.update_bar(x, self.bar) for x in self.XMIN]
             new_minute = True
         if new_minute:
-            if self.app.config.get("SHARED_FUNC"):
-                shared = SharedData(last_price=round(self.last_price, 2), datetime=tick.datetime,
-                                    local_symbol=self.local_symbol,
-                                    open_interest=self.open_interest, average_price=round(self.average_price, 2),
-                                    volume=self.volume - self.last_volume, gateway_name=tick.gateway_name)
-                event = Event(type=EVENT_SHARED, data=shared)
-                self.rpo.put(event)
             self.last_volume = tick.volume
-
             self.bar = BarData(
                 symbol=tick.symbol,
                 exchange=tick.exchange,
@@ -97,14 +91,16 @@ class DataGenerator:
             self.bar.datetime = tick.datetime
 
         if self.last_tick:
+            """ 更新volume的改变 """
             volume_change = tick.volume - self.last_tick.volume
             self.bar.volume += max(volume_change, 0)
         self.last_tick = tick
 
-    def update_bar(self, xmin, xmin_bar: BarData, bar: BarData):
+    def update_bar(self, xmin, bar: BarData):
         """
         Update 1 minute bar into generator
         """
+        xmin_bar = getattr(self, f"min_{xmin}_bar", None)
         if not xmin_bar:
             xmin_bar = BarData(
                 symbol=bar.symbol,
@@ -115,6 +111,7 @@ class DataGenerator:
                 high_price=bar.high_price,
                 low_price=bar.low_price
             )
+            setattr(self, f"min_{xmin}_bar", xmin_bar)
         else:
             xmin_bar.high_price = max(
                 xmin_bar.high_price, bar.high_price)
@@ -123,26 +120,28 @@ class DataGenerator:
 
         xmin_bar.close_price = bar.close_price
         xmin_bar.volume += int(bar.volume)
+
         if not (bar.datetime.minute + 1) % xmin:
             xmin_bar.datetime = xmin_bar.datetime.replace(
                 second=0, microsecond=0
             )
             xmin_bar.interval = xmin
             event = Event(type=EVENT_BAR, data=xmin_bar)
-            self.rpo.put(event)
-            xmin_bar = None
+            common_signals.bar_signal.send(event)
+            setattr(self, f"min_{xmin}_bar", None)
 
     def generate(self):
         if self.bar is not None:
             self.bar.interval = 1
             event = Event(type=EVENT_BAR, data=self.bar)
-            self.rpo.put(event)
+            common_signals.bar_signal.send(event)
+
         for x in self.XMIN:
             if self.bar is not None:
                 bar = getattr(self, "min_{}_bar".format(x))
                 bar.interval = x
                 event = Event(type=EVENT_BAR, data=bar)
-                self.rpo.put(event)
+                common_signals.bar_signal.send(event)
         self.bar = None
         [setattr(self, "min_{}_bar".format(x), None) for x in self.XMIN]
 

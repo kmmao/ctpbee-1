@@ -235,7 +235,6 @@ class BaseData:
         return temp
 
     def _to_df(self):
-        # todo: df support
         temp = {}
         for x in dir(self):
             if x.startswith("_") or x.startswith("create"):
@@ -245,7 +244,8 @@ class BaseData:
                 continue
             temp[x] = getattr(self, x)
 
-        return DataFrame([temp], columns=list(temp.keys()).remove("datetime")).set_index(['datetime']) if temp.get("datetime", None) is not None else DataFrame([temp], columns=list(temp.keys()))
+        return DataFrame([temp], columns=list(temp.keys()).remove("datetime")).set_index(['datetime']) if temp.get(
+            "datetime", None) is not None else DataFrame([temp], columns=list(temp.keys()))
 
     def _asdict(self):
         """ 转换为字典 里面会有enum """
@@ -325,11 +325,14 @@ class TickData(BaseData):
     limit_down: float = 0
     open_interest: int = 0
     average_price: float = 0
+    settlement_price: float = 0
     pre_settlement_price: float = 0
+    pre_open_interest: int = 0
     open_price: float = 0
     high_price: float = 0
     low_price: float = 0
     pre_close: float = 0
+    turnover: float = 0
 
     bid_price_1: float = 0
     bid_price_2: float = 0
@@ -377,7 +380,12 @@ class BarData(BaseData):
 
     def __post_init__(self):
         """"""
-        self.local_symbol = f"{self.symbol}.{self.exchange.value}"
+        l = getattr(self, "local_symbol", None)
+        if l is not None:
+            setattr(self, "symbol", l.split(".")[0])
+            setattr(self, "exchange", l.split(".")[1])
+        else:
+            self.local_symbol = f"{self.symbol}.{self.exchange.value}"
 
 
 class OrderData(BaseData):
@@ -401,7 +409,10 @@ class OrderData(BaseData):
 
     def __post_init__(self):
         """"""
-        self.local_symbol = f"{self.symbol}.{self.exchange.value}"
+        try:
+            self.local_symbol = f"{self.symbol}.{self.exchange.value}"
+        except AttributeError as e:
+            self.local_symbol = f"{self.symbol}.{self.exchange}"
         self.local_order_id = f"{self.gateway_name}.{self.order_id}"
 
     def _is_active(self):
@@ -443,7 +454,10 @@ class TradeData(BaseData):
 
     def __post_init__(self):
         """"""
-        self.local_symbol = f"{self.symbol}.{self.exchange.value}"
+        try:
+            self.local_symbol = f"{self.symbol}.{self.exchange.value}"
+        except AttributeError:
+            self.local_symbol = f"{self.symbol}.{self.exchange}"
         self.local_order_id = f"{self.gateway_name}.{self.order_id}"
         self.local_trade_id = f"{self.gateway_name}.{self.tradeid}"
 
@@ -580,9 +594,12 @@ class OrderRequest(BaseRequest):
 
     def __post_init__(self):
         """"""
-        self.local_symbol = f"{self.symbol}.{self.exchange.value}"
+        try:
+            self.local_symbol = f"{self.symbol}.{self.exchange.value}"
+        except AttributeError:
+            self.local_symbol = f"{self.symbol}.{self.exchange}"
 
-    def _create_order_data(self, order_id: str, gateway_name: str):
+    def _create_order_data(self, order_id: str, gateway_name: str, time=None):
         """
         Create order data from request.
         """
@@ -596,6 +613,7 @@ class OrderRequest(BaseRequest):
             price=self.price,
             volume=self.volume,
             gateway_name=gateway_name,
+            time=time
         )
         return order
 
@@ -668,6 +686,25 @@ class MarketDataRequest(BaseRequest):
     """ 请求市场数据 """
     symbol: str
     exchange: Exchange
+
+
+EVENT_TIMER = "timer"
+
+
+class Event:
+    """
+    Event object consists of a type string which is used
+    by event engine for distributing event, and a data
+    object which contains the real data.
+    """
+
+    def __init__(self, type: str, data: Any = None):
+        """"""
+        self.type = type
+        self.data = data
+
+    def __str__(self):
+        return "Event(type={})".format(self.type)
 
 
 data_class = [TickData, BarData, OrderData, TradeData, PositionData, AccountData, LogData, ContractData, SharedData]
